@@ -1,3 +1,6 @@
 gem 'oauth'
 gem 'zliby'
 gem 'logging'
+gem 'twitter'
+gem 'shotgun'
+gem 'sinatra'
