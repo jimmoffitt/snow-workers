@@ -1,0 +1,12 @@
+engagement_api:
+  #consumer_key:
+  #consumer_secret:
+  bearer_token:
+
+premium_search_api:
+  #consumer_token:
+  #consumer_secret:
+  bearer_token:
+  environment:
+  
+
