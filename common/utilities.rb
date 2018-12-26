@@ -1,4 +1,7 @@
-#Collection of general helper methods.
+# Collection of general helper methods.
+# Main focus is on helper functions for working with dates and timestamps.
+# These functions are familiar with the YYYYMMDDHHmm UTC conventions of the Twitter premium and enterprise tiers of APIs. 
+# Enables "-s 7d" to ask for the past week of data. 
 
 module Utilities
 
@@ -28,6 +31,7 @@ module Utilities
 	end
 
 	#Takes a variety of string inputs and returns a standard Twitter Search/PowerTrack YYYYMMDDHHMM timestamp string.
+	#Generally used with any API client that works with 'fromDate' and toDate' parameters.
 	def Utilities.set_date_string(input)
 
 		now = Time.new
