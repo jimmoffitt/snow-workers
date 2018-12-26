@@ -1,1 +1,3 @@
-gem 'oauth
+gem 'oauth'
+gem 'zliby'
+gem 'logging'
