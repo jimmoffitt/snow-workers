@@ -17,6 +17,12 @@ This refactoring will include:
 
 This will make deploying on Heroku easier. Heroku provides a basic UI for ENV settings.
 
+These two projects differ in fundamental ways, and it will be interesting to see what new common code falls out of this. One key difference is that the search client uses app-only Bearer Tokens and the engagement API supports user authentication. So two projects with very difference authentication libraries baked into them.
+
++ If the Snowbot uses only public metrics, then 'auth package' unification can happen around the search code. 
+
+
+
 
 
 
