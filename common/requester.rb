@@ -1,11 +1,19 @@
 # Knows how to make HTTP requests. 
 # A simple, common RESTful HTTP class put together for Twitter RESTful endpoints.
-# Does authentication via header, so supports BASIC and BEARER TOKEN authentication.
+# Does authentication via header, so supports BASIC and BEARER TOKEN authentication. This class knows to use Basic Auth
+# with enterprise endpoints, and Bearer Token authentication with premium endpoints. 
 
-# Written with Twitter both premium and enterprise search in mind:
-# Premium Search Tweets: 30-Day
-# Enterprise 30-Day Search API
-# Enterprise Full-Archive Search API
+# Written with both premium and enterprise Search Tweets APIs in mind:
+# -- Premium Search Tweets: 30-Day and Full-Archive
+# -- Enterprise 30-Day and Full-Archive Search API
+
+#Basic usage:
+#require_relative '../../common/requester'
+#attr_accessor: requester
+#@requester = Requester.new #HTTP helper class.
+#@requester.url = @urlData
+#data = build_data_request()
+#response = @requester.POST(data)
 
 #=======================================================================================================================
 
@@ -13,7 +21,7 @@ class Requester
 	require "net/https" # [] Replace with rest-client gem? https://github.com/rest-client/rest-client
 	require "uri"
 
-	attr_accessor :search_type,
+	attr_accessor :search_type, #premium or enterprise
 	              :url,
 	              :uri,
 	              :data,
