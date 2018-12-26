@@ -1,1 +1,5 @@
-
+development:
+  adapter: postgresql
+  host: localhost
+  username: snowman
+  database: snow
