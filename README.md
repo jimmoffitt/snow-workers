@@ -10,10 +10,10 @@ Code is largely borrowed from these two projects:
 This refactoring will include:
 + Support of pulling in configuration settings from the system's underlying ENV hive, e.g.:
 
-@keys['consumer_key'] = ENV['CONSUMER_KEY']
-@keys['consumer_secret'] = ENV['CONSUMER_SECRET']
-@keys['access_token'] = ENV['ACCESS_TOKEN']
-@keys['access_token_secret'] = ENV['ACCESS_TOKEN_SECRET']
+* @keys['consumer_key'] = ENV['CONSUMER_KEY']
+* @keys['consumer_secret'] = ENV['CONSUMER_SECRET']
+* @keys['access_token'] = ENV['ACCESS_TOKEN']
+* @keys['access_token_secret'] = ENV['ACCESS_TOKEN_SECRET']
 
 This will make deploying on Heroku easier. Heroku provides a basic UI for ENV settings.
 
