@@ -1,0 +1,1 @@
+worker: ruby search/search-app.rb
