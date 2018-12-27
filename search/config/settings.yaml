@@ -1,1 +1,11 @@
+# Any corresponding command-line arguments override these. This establish default configuration details.
+# Rules/filters are specified via command-line, or with a rules JSON or YAML file.
 
+#Client options.
+options:
+  search_type: premium # or enterprise
+  archive: fullarchive # or fullarchive
+  write_mode: files # options: files, so/standard/standard-out, datastore
+  outbox: ./search_outbox # Folder where retrieved data goes.
+  counts_to_standard_out: true # Always write 'counts' endpoint responses to standard out. Force to file with '-w' option.
+  compress_files: false #[] TODO: compressing output is largely untested. 
