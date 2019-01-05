@@ -1,1 +1,1 @@
-worker: ./scripts/test-worker.sh
+worker: ./scripts/worker-test.sh
