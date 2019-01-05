@@ -1,1 +1,1 @@
-worker: ruby search/search-app.rb
+worker: ./scripts/test-worker.sh
