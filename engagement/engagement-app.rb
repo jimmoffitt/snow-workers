@@ -1,7 +1,8 @@
 require 'optparse'
 require 'fileutils'
 
-require_relative '../common/app_logger'
+#Wiring up Heroku scripts, seems "relative" is... well, relative.
+require_relative 'engagement/common/app_logger'
 require_relative './lib/engagement_client'
 
 if __FILE__ == $0 #This script code is executed when running this file.
