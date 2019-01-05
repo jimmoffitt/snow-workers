@@ -1,1 +1,1 @@
-worker: scripts/worker-test.sh
+worker: bash scripts/worker-test.sh
