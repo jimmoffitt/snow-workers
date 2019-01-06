@@ -28,8 +28,8 @@ Example command-lines
     # $ruby ./search_api.rb -l -d "minutes" -r "rain OR weather (profile_region:colorado)" -s "2013-10-18 06:00" -e "2013-10-20 06:00"
 -------------------------------------------------------------------------------------------------------------------
 '''
-
-require_relative "./lib/search-tweets.rb"
+#Wiring up on Heroku, where 'relative' is well, relative.
+require_relative "lib/search-tweets.rb"
 require_relative "../common/utilities.rb"
 
 #=======================================================================================================================
