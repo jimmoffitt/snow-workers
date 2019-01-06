@@ -29,8 +29,8 @@ Example command-lines
 -------------------------------------------------------------------------------------------------------------------
 '''
 #Wiring up on Heroku, where 'relative' is well, relative.
-require_relative "/lib/search-tweets.rb"
-require_relative "common/utilities.rb"
+require_relative "lib/search-tweets.rb"
+require_relative "../common/utilities.rb"
 
 #=======================================================================================================================
 if __FILE__ == $0  #This script code is executed when running this file.
