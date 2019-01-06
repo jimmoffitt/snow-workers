@@ -29,7 +29,7 @@ Example command-lines
 -------------------------------------------------------------------------------------------------------------------
 '''
 #Wiring up on Heroku, where 'relative' is well, relative.
-require_relative "search/lib/search-tweets.rb"
+require_relative "/lib/search-tweets.rb"
 require_relative "common/utilities.rb"
 
 #=======================================================================================================================
