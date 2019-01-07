@@ -10,212 +10,221 @@ require_relative '../../common/app_logger'
 
 class EngagementClient
 
-   MAX_TWEETS_PER_REQUEST_TOTALS = 250
-   MAX_TWEETS_PER_REQUEST_28HR = 25
-   MAX_TWEETS_PER_REQUEST_HISTORICAL = 25
-   MAX_HISTORICAL_DAYS = 28
-   TOTALS_ENGAGEMENT_TYPES = ['impressions', 'engagements', 'retweets', 'favorites', 'replies', 'video_views']
-   HISTORICAL_METRIC_DATE_LIMIT = '2014-09-01' #Before which ['retweets', 'favorites', 'replies'] are not available.
+  MAX_TWEETS_PER_REQUEST_TOTALS = 250
+  MAX_TWEETS_PER_REQUEST_28HR = 25
+  MAX_TWEETS_PER_REQUEST_HISTORICAL = 25
+  MAX_HISTORICAL_DAYS = 28
+  TOTALS_ENGAGEMENT_TYPES = ['impressions', 'engagements', 'retweets', 'favorites', 'replies', 'video_views']
+  HISTORICAL_METRIC_DATE_LIMIT = '2014-09-01' #Before which ['retweets', 'favorites', 'replies'] are not available.
 
-   REQUEST_SLEEP_IN_SECONDS = 10 #Sleep this long with hitting request rate limit.
+  REQUEST_SLEEP_IN_SECONDS = 10 #Sleep this long with hitting request rate limit.
 
-   @@request_num
+  @@request_num
 
-   attr_accessor :keys,
-				 :api,
-				 :endpoint,
-				 :inbox, #files containing Gnip output (HPT, Search).
+  attr_accessor :keys,
+                :api,
+                :endpoint,
+                :inbox, #files containing Gnip output (HPT, Search).
 
-				 :name, #Session name.
-				 :engagement_types,
-				 :groupings,
+                :name, #Session name.
+                :engagement_types,
+                :groupings,
 
-				 :tweet_ids, #Corpus of Tweets we are processing.
-				 :tweets_of_interest, #an array of Tweet ids loaded in 25/250 at a time.
-				 :num_requests,
-				 :process_duration,
+                :tweet_ids, #Corpus of Tweets we are processing.
+                :tweets_of_interest, #an array of Tweet ids loaded in 25/250 at a time.
+                :num_requests,
+                :process_duration,
 
-				 :start_date, :end_date, #Optional, API 'historical' endpoint defaults to last 28 days.
+                :start_date, :end_date, #Optional, API 'historical' endpoint defaults to last 28 days.
 
-				 :outbox, #Where any API outputs are written.
-				 :name_based_folders,
-				 :save_ids,
-				 :save_api_responses,
+                :outbox, #Where any API outputs are written.
+                :name_based_folders,
+                :save_ids,
+                :save_api_responses,
 
-				 :base_url,
-				 :uri_path,
+                :base_url,
+                :uri_path,
 
-				 :rate_limit_requests,
-				 :rate_limit_seconds,
+                :rate_limit_requests,
+                :rate_limit_seconds,
 
-				 :top_tweets,
-				 :max_top_tweets,
+                :top_tweets,
+                :max_top_tweets,
 
-				 :utils,
-				 :verbose
+                :utils,
+                :verbose
 
-   def initialize
+  def initialize
 
-	  @verbose = false
-	  @utils = InsightsUtils.new(@verbose)
+    @verbose = false
+    @utils = InsightsUtils.new(@verbose)
 
-	  #Total 'corpus' of Tweet IDs to process.
-	  @tweet_ids = {}
-	  @tweet_ids['tweet_ids'] = []
-	  #Tweets passed into a EngagementAPI request, subject to MAX_TWEETS_PER_REQUEST.
-	  @tweets_of_interest = []
-	  @num_requests = 0
-	  @process_duration = 0
+    #Total 'corpus' of Tweet IDs to process.
+    @tweet_ids = {}
+    @tweet_ids['tweet_ids'] = []
+    #Tweets passed into a EngagementAPI request, subject to MAX_TWEETS_PER_REQUEST.
+    @tweets_of_interest = []
+    @num_requests = 0
+    @process_duration = 0
 
-	  #Simple structure for storing top tweets.
-	  @top_tweets = {}
-	  @max_top_tweets = 10
+    #Simple structure for storing top tweets.
+    @top_tweets = {}
+    @max_top_tweets = 10
 
-	  @name = ''
-	  @engagement_types = []
-	  @groupings = []
+    @name = ''
+    @engagement_types = []
+    @groupings = []
 
-	  @save_api_responses = true
+    @save_api_responses = true
 
-	  @@request_num = 0 #Used to count requests for session summary.
-	  @outbox = './output'
-	  @name_based_folders = false
+    @@request_num = 0 #Used to count requests for session summary.
+    @outbox = './output'
+    @name_based_folders = false
 
-	  @keys = {}
+    @keys = {}
 
-	  @base_url = 'https://data-api.twitter.com'
-	  @endpoint = 'totals'
-	  @uri_path = "/insights/engagement/#{@endpoint}"
-	  @rate_limit_requests = 6
-	  @rate_limit_seconds = 60
-   end
+    @base_url = 'https://data-api.twitter.com'
+    @endpoint = 'totals'
+    @uri_path = "/insights/engagement/#{@endpoint}"
+    @rate_limit_requests = 6
+    @rate_limit_seconds = 60
+  end
 
-   def set_account_config(file)
+  def set_account_config(file)
 
-	  begin
-		 keys = YAML::load_file(file)
-		 @keys = keys['engagement_api']
-	  rescue
-		 puts "Error trying to load account settings. Could not parse account YAML file. Quitting."
-		 @keys = nil
-	  end
-   end
 
-   def set_settings_config(file)
+    #First, try to load from ENV.
+    # #Load keys from ENV.
+    #@keys[:bearer_token] = ENV['ENGAGEMENT_BEARER_TOKEN']
+    @keys[:consumer_key] = ENV['ENGAGEMENT_CONSUMER_KEY']
+    @keys[:consumer_secret] = ENV['ENGAGEMENT_CONSUMER_SECRET']
 
-	  begin
-		 settings = {}
-		 settings = YAML::load_file(file)
-	  rescue
-		 puts "Error trying to load app settings. Could not parse settings YAML file. Quitting."
-		 settings = nil
-	  end
+    if @keys[:consumer_key].nil?
+      begin
+        keys = YAML::load_file(file)
+        @keys = keys['engagement_api']
+      rescue
+        puts "Error trying to load account settings. Could not parse account YAML file. Quitting."
+        @keys = nil
+      end
+    end
+  end
 
-	  #Now parse contents and load separate attributes.
+  def set_settings_config(file)
 
-	  begin
+    begin
+      settings = {}
+      settings = YAML::load_file(file)
+    rescue
+      puts "Error trying to load app settings. Could not parse settings YAML file. Quitting."
+      settings = nil
+    end
 
-		 @name = settings['engagement_settings']['name']
+    #Now parse contents and load separate attributes.
 
-		 @endpoint = settings['engagement_settings']['endpoint'] #What endpoint are we hitting?
+    begin
 
-		 @inbox = settings['engagement_settings']['inbox'] #Where the Tweets are coming from.
-		 @outbox = settings['engagement_settings']['outbox']
-		 @name_based_folders = settings['engagement_settings']['name_based_folders']
+      @name = settings['engagement_settings']['name']
 
-		 @rate_limit_requests = settings['engagement_settings']['rate_limit_requests']
-		 @rate_limit_seconds = settings['engagement_settings']['rate_limit_seconds']
+      @endpoint = settings['engagement_settings']['endpoint'] #What endpoint are we hitting?
 
-		 @max_top_tweets = settings['engagement_settings']['max_top_tweets']
+      @inbox = settings['engagement_settings']['inbox'] #Where the Tweets are coming from.
+      @outbox = settings['engagement_settings']['outbox']
+      @name_based_folders = settings['engagement_settings']['name_based_folders']
 
-		 @start_date = settings['engagement_settings']['start']
-		 @end_date = settings['engagement_settings']['end']
+      @rate_limit_requests = settings['engagement_settings']['rate_limit_requests']
+      @rate_limit_seconds = settings['engagement_settings']['rate_limit_seconds']
 
-		 @engagement_types = settings['engagement_types']
-		 @groupings = settings['engagement_groupings']
+      @max_top_tweets = settings['engagement_settings']['max_top_tweets']
 
-		 @verbose = settings['engagement_settings']['verbose']
+      @start_date = settings['engagement_settings']['start']
+      @end_date = settings['engagement_settings']['end']
 
-		 @save_ids = settings['engagement_settings']['save_ids']
-		 @request_resources = settings['engagement_settings']['request_resources']
-		 @save_api_responses = settings['engagement_settings']['save_api_responses']
+      @engagement_types = settings['engagement_types']
+      @groupings = settings['engagement_groupings']
 
-	  rescue
-		 puts "Error loading settings. Check settings."
-	  end
+      @verbose = settings['engagement_settings']['verbose']
 
-	  #Create folders if they do not exist.
-	  if (!File.exist?(@inbox))
-		 Dir.mkdir(@inbox)
-	  end
+      @save_ids = settings['engagement_settings']['save_ids']
+      @request_resources = settings['engagement_settings']['request_resources']
+      @save_api_responses = settings['engagement_settings']['save_api_responses']
 
-	  if (!File.exist?("#{@inbox}/processed"))
-		 Dir.mkdir("#{@inbox}/processed")
-	  end
+    rescue
+      puts "Error loading settings. Check settings."
+    end
 
-	  if (!File.exist?(@outbox))
-		 Dir.mkdir(@outbox)
-	  end
+    #Create folders if they do not exist.
+    if (!File.exist?(@inbox))
+      Dir.mkdir(@inbox)
+    end
 
-	  if @name_based_folders
+    if (!File.exist?("#{@inbox}/processed"))
+      Dir.mkdir("#{@inbox}/processed")
+    end
 
-		 if (!File.exist?("#{@outbox}/#{@name}"))
-			Dir.mkdir("#{@outbox}/#{@name}")
-		 end
+    if (!File.exist?(@outbox))
+      Dir.mkdir(@outbox)
+    end
 
-		 if (!File.exist?("#{@outbox}/#{@name}/metrics"))
-			Dir.mkdir("#{@outbox}/#{@name}/metrics")
-		 end
+    if @name_based_folders
 
-		 @outbox = "#{@outbox}/#{@name}"
+      if (!File.exist?("#{@outbox}/#{@name}"))
+        Dir.mkdir("#{@outbox}/#{@name}")
+      end
 
-	  else
-		 if (!File.exist?("#{@outbox}/metrics"))
-			Dir.mkdir("#{@outbox}/metrics")
-		 end
-	  end
+      if (!File.exist?("#{@outbox}/#{@name}/metrics"))
+        Dir.mkdir("#{@outbox}/#{@name}/metrics")
+      end
 
-   end
+      @outbox = "#{@outbox}/#{@name}"
 
-   def get_api_access
+    else
+      if (!File.exist?("#{@outbox}/metrics"))
+        Dir.mkdir("#{@outbox}/metrics")
+      end
+    end
 
-	  consumer = OAuth::Consumer.new(@keys['consumer_key'], @keys['consumer_secret'], {:site => @base_url})
-	  token = {:oauth_token => @keys['access_token'],
-			   :oauth_token_secret => @keys['access_token_secret']
-	  }
+  end
 
-	  @api = OAuth::AccessToken.from_hash(consumer, token)
+  def get_api_access
 
-   end
+    consumer = OAuth::Consumer.new(@keys['consumer_key'], @keys['consumer_secret'], {:site => @base_url})
+    token = {:oauth_token => @keys['access_token'],
+             :oauth_token_secret => @keys['access_token_secret']
+    }
 
-   def handle_response_error(result)
+    @api = OAuth::AccessToken.from_hash(consumer, token)
 
-	  AppLogger.log_error "ERROR. Response code: #{result.code} | Message: #{result.message} | Server says: #{result.body}"
-   end
+  end
 
-   def make_post_request(uri_path, request)
+  def handle_response_error(result)
 
-	  begin
+    AppLogger.log_error "ERROR. Response code: #{result.code} | Message: #{result.message} | Server says: #{result.body}"
+  end
 
-		 get_api_access if @api.nil? #token timeout?
+  def make_post_request(uri_path, request)
 
-		 @@request_num += 1
-		 AppLogger.log_info "Client making API request: #{request[0..80]}"
-		 result = @api.post(uri_path, request, {"content-type" => "application/json", "Accept-Encoding" => "gzip"})
-		 
-		 #Unzip result body, which is gzip.
-		 gz = Zlib::GzipReader.new( StringIO.new( result.body ) )
-		 result.body = gz.read
+    begin
 
-		 if result.code.to_i > 201
-			handle_response_error(result)
-		 end
+      get_api_access if @api.nil? #token timeout?
 
-         result.body
-	  rescue
-		 AppLogger.log_error "Error making POST request. "
-	  end
-   end
+      @@request_num += 1
+      AppLogger.log_info "Client making API request: #{request[0..80]}"
+      result = @api.post(uri_path, request, {"content-type" => "application/json", "Accept-Encoding" => "gzip"})
+
+      #Unzip result body, which is gzip.
+      gz = Zlib::GzipReader.new(StringIO.new(result.body))
+      result.body = gz.read
+
+      if result.code.to_i > 201
+        handle_response_error(result)
+      end
+
+      result.body
+    rescue
+      AppLogger.log_error "Error making POST request. "
+    end
+  end
 
 =begin
 	  {top_tweets[]: { "type", tweets[{"id", "count"}] }
@@ -238,637 +247,637 @@ class EngagementClient
 }
 =end
 
-   #Dynamically build data structure based on configured Engagement Types.
-   def build_top_tweets_hash
+  #Dynamically build data structure based on configured Engagement Types.
+  def build_top_tweets_hash
 
-	  tweet = {}
-	  tweet['id'] = "0"
-	  tweet['count'] = 0
+    tweet = {}
+    tweet['id'] = "0"
+    tweet['count'] = 0
 
-	  top_tweets["top_tweets"] = []
+    top_tweets["top_tweets"] = []
 
-	  #add a hash for every 'true' @engagement_types
-	  @engagement_types.each { |engagement_type|
+    #add a hash for every 'true' @engagement_types
+    @engagement_types.each {|engagement_type|
 
-		 if (@endpoint != 'totals' and engagement_type[1]) or
-			 (@endpoint == 'totals' and TOTALS_ENGAGEMENT_TYPES.include?(engagement_type[0]) and engagement_type[1])
+      if (@endpoint != 'totals' and engagement_type[1]) or
+          (@endpoint == 'totals' and TOTALS_ENGAGEMENT_TYPES.include?(engagement_type[0]) and engagement_type[1])
 
-			engagement_group = {}
-			engagement_group['type'] = engagement_type[0];
+        engagement_group = {}
+        engagement_group['type'] = engagement_type[0];
 
-			#add a hash for every top tweet .
-			engagement_group['tweets'] = Array.new(@max_top_tweets, tweet)
+        #add a hash for every top tweet .
+        engagement_group['tweets'] = Array.new(@max_top_tweets, tweet)
 
-			top_tweets["top_tweets"] << engagement_group
-		 end
-	  }
+        top_tweets["top_tweets"] << engagement_group
+      end
+    }
 
-	  top_tweets["totals"] = []
+    top_tweets["totals"] = []
 
-	  #add a hash for every 'true' @engagement_types
-	  @engagement_types.each { |engagement_type|
+    #add a hash for every 'true' @engagement_types
+    @engagement_types.each {|engagement_type|
 
-		 if (@endpoint != 'totals' and engagement_type[1]) or
-			 (@endpoint == 'totals' and TOTALS_ENGAGEMENT_TYPES.include?(engagement_type[0]) and engagement_type[1])
+      if (@endpoint != 'totals' and engagement_type[1]) or
+          (@endpoint == 'totals' and TOTALS_ENGAGEMENT_TYPES.include?(engagement_type[0]) and engagement_type[1])
 
-			engagement_group = {}
-			engagement_group['type'] = engagement_type[0];
+        engagement_group = {}
+        engagement_group['type'] = engagement_type[0];
 
-			engagement_group['count'] = 0
+        engagement_group['count'] = 0
 
-			top_tweets["totals"] << engagement_group
-		 end
-	  }
+        top_tweets["totals"] << engagement_group
+      end
+    }
 
-	  top_tweets
+    top_tweets
 
-   end
+  end
 
-   def sort_top_tweets(top_tweets = nil)
-	  top_tweets = @top_tweets if top_tweets.nil?
+  def sort_top_tweets(top_tweets = nil)
+    top_tweets = @top_tweets if top_tweets.nil?
 
-	  top_tweets['top_tweets'].each { |top_tweets_by_type|
-		 array = top_tweets_by_type['tweets']
-		 array.sort_by! { |hsh| hsh['count'] }.reverse!
-	  }
+    top_tweets['top_tweets'].each {|top_tweets_by_type|
+      array = top_tweets_by_type['tweets']
+      array.sort_by! {|hsh| hsh['count']}.reverse!
+    }
 
-	  top_tweets
-   end
+    top_tweets
+  end
 
-   def top_tweet?(type, count, top_tweets = nil)
+  def top_tweet?(type, count, top_tweets = nil)
 
-	  top_tweets = @top_tweets if top_tweets.nil?
+    top_tweets = @top_tweets if top_tweets.nil?
 
-	  top_tweets_hash = top_tweets['top_tweets']
+    top_tweets_hash = top_tweets['top_tweets']
 
-	  top_tweets_hash.each { |top_tweets_type|
+    top_tweets_hash.each {|top_tweets_type|
 
-		 if top_tweets_type['type'] == type
+      if top_tweets_type['type'] == type
 
-			top_tweets_type['tweets'].each { |tweet|
+        top_tweets_type['tweets'].each {|tweet|
 
-			   tweet_count = tweet['count'].to_i
+          tweet_count = tweet['count'].to_i
 
-			   if tweet_count < count.to_i
-				  return true
-			   end
-			}
-		 end
-	  }
+          if tweet_count < count.to_i
+            return true
+          end
+        }
+      end
+    }
 
-	  false
+    false
 
-   end
+  end
 
-   def top_tweets_trim(type, top_tweets = nil)
-	  top_tweets = @top_tweets if top_tweets.nil?
-	  tweet_to_delete = {}
+  def top_tweets_trim(type, top_tweets = nil)
+    top_tweets = @top_tweets if top_tweets.nil?
+    tweet_to_delete = {}
 
-	  #add to array
-	  top_tweets['top_tweets'].each { |top_tweets_by_type|
-		 if top_tweets_by_type['type'] == type
+    #add to array
+    top_tweets['top_tweets'].each {|top_tweets_by_type|
+      if top_tweets_by_type['type'] == type
 
-			count_min = 100_000_000_000
+        count_min = 100_000_000_000
 
-			top_tweets_by_type['tweets'].each { |tweet|
+        top_tweets_by_type['tweets'].each {|tweet|
 
-			   if tweet['count'].to_i < count_min
-				  count_min = tweet['count'].to_i
-				  tweet_to_delete = {}
-				  tweet_to_delete['id'] = tweet['id']
-				  tweet_to_delete['count'] = tweet['count'].to_i
-			   end
-			}
+          if tweet['count'].to_i < count_min
+            count_min = tweet['count'].to_i
+            tweet_to_delete = {}
+            tweet_to_delete['id'] = tweet['id']
+            tweet_to_delete['count'] = tweet['count'].to_i
+          end
+        }
 
-			if not tweet_to_delete.nil?
+        if not tweet_to_delete.nil?
 
-			   array = top_tweets_by_type['tweets']
+          array = top_tweets_by_type['tweets']
 
-			   array.delete_at(array.index(tweet_to_delete) || array)
+          array.delete_at(array.index(tweet_to_delete) || array)
 
-			   #top_tweets_by_type['tweets'].delete_at(top_tweets_by_type['tweets'].index(tweet_to_delete) || top_tweets_by_type['tweets'])
-			end
-		 end
+          #top_tweets_by_type['tweets'].delete_at(top_tweets_by_type['tweets'].index(tweet_to_delete) || top_tweets_by_type['tweets'])
+        end
+      end
 
-	  }
-   end
+    }
+  end
 
-   def top_tweets_add(type, count, tweet_id, top_tweets = nil)
+  def top_tweets_add(type, count, tweet_id, top_tweets = nil)
 
-	  top_tweets = @top_tweets if top_tweets.nil?
+    top_tweets = @top_tweets if top_tweets.nil?
 
-	  #add to array
-	  top_tweets['top_tweets'].each { |top_tweets_by_type|
+    #add to array
+    top_tweets['top_tweets'].each {|top_tweets_by_type|
 
-		 if top_tweets_by_type['type'] == type
+      if top_tweets_by_type['type'] == type
 
-			top_tweet = {}
-			top_tweet['id'] = tweet_id
-			top_tweet['count'] = count.to_i
+        top_tweet = {}
+        top_tweet['id'] = tweet_id
+        top_tweet['count'] = count.to_i
 
-			top_tweets_by_type['tweets'] << top_tweet
-		 end
+        top_tweets_by_type['tweets'] << top_tweet
+      end
 
-	  }
+    }
 
-	  top_tweets_trim(type, top_tweets)
+    top_tweets_trim(type, top_tweets)
 
-   end
+  end
 
-   def check_top_tweets(type, tweet, top_tweets = nil)
+  def check_top_tweets(type, tweet, top_tweets = nil)
 
-	  top_tweets = @top_tweets if top_tweets.nil?
+    top_tweets = @top_tweets if top_tweets.nil?
 
-	  if top_tweet?(type, count, top_tweets)
-		 top_tweets_add(type, tweet_id, count, top_tweets)
-	  end
+    if top_tweet?(type, count, top_tweets)
+      top_tweets_add(type, tweet_id, count, top_tweets)
+    end
 
-   end
+  end
 
-   def manage_totals(type, count, top_tweets)
+  def manage_totals(type, count, top_tweets)
 
-	  top_tweets = @top_tweets if top_tweets.nil?
+    top_tweets = @top_tweets if top_tweets.nil?
 
-	  totals_hash = top_tweets['totals']
+    totals_hash = top_tweets['totals']
 
-	  totals_hash.each { |totals_by_type|
+    totals_hash.each {|totals_by_type|
 
-		 if totals_by_type['type'] == type
-			totals_by_type['count'] += count.to_i
-		 end
-	  }
+      if totals_by_type['type'] == type
+        totals_by_type['count'] += count.to_i
+      end
+    }
 
-   end
+  end
 
-   def manage_top_tweets(results, top_tweets = nil)
+  def manage_top_tweets(results, top_tweets = nil)
 
-	  top_tweets = @top_tweets if top_tweets.nil?
+    top_tweets = @top_tweets if top_tweets.nil?
 
-	  top_engagement_types = []
+    top_engagement_types = []
 
-	  @engagement_types.each { |type, turned_on|
-		 if turned_on
-			top_engagement_types << type
-		 end
-	  }
+    @engagement_types.each {|type, turned_on|
+      if turned_on
+        top_engagement_types << type
+      end
+    }
 
-	  #Transverse the "by Tweets" section
-	  tweet_results = results['by_tweet_type']
+    #Transverse the "by Tweets" section
+    tweet_results = results['by_tweet_type']
 
-	  if tweet_results.nil?
-		 AppLogger.log_error "Managing Top Tweets, but not finding 'by_tweet_type' in Engagement Groupings..."
-	  end
+    if tweet_results.nil?
+      AppLogger.log_error "Managing Top Tweets, but not finding 'by_tweet_type' in Engagement Groupings..."
+    end
 
-	  tweet_results.each { |tweet_id, tweet_engagements|
+    tweet_results.each {|tweet_id, tweet_engagements|
 
-		 tweet_engagements.each { |engagement_type, count|
+      tweet_engagements.each {|engagement_type, count|
 
-			top_engagement_types.each { |type|
-			   if type == engagement_type
-				  if top_tweet?(type, count, top_tweets)
-					 top_tweets_add(type, count, tweet_id, top_tweets)
-				  end
+        top_engagement_types.each {|type|
+          if type == engagement_type
+            if top_tweet?(type, count, top_tweets)
+              top_tweets_add(type, count, tweet_id, top_tweets)
+            end
 
-				  #Add results to totals.
-				  manage_totals(type, count, top_tweets) if count.to_i > 0
+            #Add results to totals.
+            manage_totals(type, count, top_tweets) if count.to_i > 0
 
-			   end
-			}
-		 }
-	  }
+          end
+        }
+      }
+    }
 
-   end
-   
-   def write_output(top_tweets = nil)
+  end
 
-	  top_tweets = @top_tweets if top_tweets.nil?
-	  
-	  extra_spaces = '          '
+  def write_output(top_tweets = nil)
 
-	  #Write results to a string.
-	  output = ''
-	  
-	  output = "Engagement API Results "
-	  if @name != nil 
-	  	output += "for #{@name} dataset."
-	  end
-	  output += "\n \nNumber of Tweets: \t #{@tweet_ids.length} \n \n"
-	  output += "Engagement Type #{extra_spaces} \t Total \n"
-	  
-	  if @max_top_tweets > 0
-	  
-		 top_tweets["totals"].each { |totals_by_type|
-   
-			if @endpoint != 'totals' or (@endpoint == 'totals' and TOTALS_ENGAGEMENT_TYPES.include?(totals_by_type['type']))
-			   output += "#{totals_by_type['type'].capitalize} #{extra_spaces}\t #{extra_spaces} #{totals_by_type['count'].to_s} \n"
-			end
-		 }
-   
-		 output += "\n \nTop Tweets \n \n"
-   
-		 #Top Tweets output.
-		 top_tweets["top_tweets"].each { |top_tweets_by_type|
-   
-			if @endpoint != 'totals' or (@endpoint == 'totals' and TOTALS_ENGAGEMENT_TYPES.include?(top_tweets_by_type['type']))
-   
-			   output += "Top Tweets for #{top_tweets_by_type['type']}: \t #{top_tweets_by_type['type'].capitalize} \t Tweet links:\n"
-   
-			   top_tweets_by_type["tweets"].each { |top_tweet|
-				  output += "#{top_tweet["id"]}#{extra_spaces} \t #{top_tweet["count"].to_s} #{extra_spaces}\t https://twitter.com/lookup/status/#{top_tweet["id"]}\n" unless top_tweet["count"] == 0
-			   }
-			   output += "\n"
-			end
-		 }
+    top_tweets = @top_tweets if top_tweets.nil?
 
-	  end
-	  
-	  output += "\n \nNumber of requests: #{@num_requests} \nProcess took #{format('%.01f', process_duration/60)} minutes."
+    extra_spaces = '          '
 
-   end
-   
-   def write_results_file(results)
+    #Write results to a string.
+    output = ''
 
-	  results_file = "#{@outbox}/#{@name}_results.csv"
-	  File.open(results_file,'w') {|file| file.write(results.gsub("\t", ','))}
+    output = "Engagement API Results "
+    if @name != nil
+      output += "for #{@name} dataset."
+    end
+    output += "\n \nNumber of Tweets: \t #{@tweet_ids.length} \n \n"
+    output += "Engagement Type #{extra_spaces} \t Total \n"
 
-   end
+    if @max_top_tweets > 0
 
-   def generate_tweets_of_interest_for_requests(endpoint = nil)
-	  #@tweet_ids holds a 'tweet_ids' array of all 'inbox' tweets. Here we split them into MAX_TWEETS_PER_REQUEST "tweets of interest" parcels.
-	  # ====> loads @tweets_of_interest[]
-	  #@tweets_of_interest[0] = ['tweet_id_1', .., 'tweet_id_25']
-	  #@tweets_of_interest[1] = ['tweet_id_26', .., 'tweet_id_50']
+      top_tweets["totals"].each {|totals_by_type|
 
-	  endpoint = @endpoint if endpoint.nil?
+        if @endpoint != 'totals' or (@endpoint == 'totals' and TOTALS_ENGAGEMENT_TYPES.include?(totals_by_type['type']))
+          output += "#{totals_by_type['type'].capitalize} #{extra_spaces}\t #{extra_spaces} #{totals_by_type['count'].to_s} \n"
+        end
+      }
 
-	  request_tweets = [] #Array of up to MAX_TWEETS_PER_REQUEST.
+      output += "\n \nTop Tweets \n \n"
 
-	  if endpoint == 'historical'
-		 tweets_per_request_limit = MAX_TWEETS_PER_REQUEST_HISTORICAL
-	  elsif endpoint == '28hr'
-		 tweets_per_request_limit = MAX_TWEETS_PER_REQUEST_28HR
-	  elsif endpoint == 'totals'
-		 tweets_per_request_limit = MAX_TWEETS_PER_REQUEST_TOTALS
-	  else
-		 AppLogger.log_warn "Specified endpoint not yet supported!"
-		 return nil
-	  end
+      #Top Tweets output.
+      top_tweets["top_tweets"].each {|top_tweets_by_type|
 
-	  @tweet_ids.each do |tweet_id|
+        if @endpoint != 'totals' or (@endpoint == 'totals' and TOTALS_ENGAGEMENT_TYPES.include?(top_tweets_by_type['type']))
 
-		 request_tweets << tweet_id
+          output += "Top Tweets for #{top_tweets_by_type['type']}: \t #{top_tweets_by_type['type'].capitalize} \t Tweet links:\n"
 
-		 if request_tweets.length == tweets_per_request_limit then
+          top_tweets_by_type["tweets"].each {|top_tweet|
+            output += "#{top_tweet["id"]}#{extra_spaces} \t #{top_tweet["count"].to_s} #{extra_spaces}\t https://twitter.com/lookup/status/#{top_tweet["id"]}\n" unless top_tweet["count"] == 0
+          }
+          output += "\n"
+        end
+      }
 
-			@tweets_of_interest << request_tweets
+    end
 
-			request_tweets = []
-		 end
-	  end
+    output += "\n \nNumber of requests: #{@num_requests} \nProcess took #{format('%.01f', process_duration / 60)} minutes."
 
-	  #Handle last batch, not already grabbed in USER_LIMIT chunks above.
-	  if request_tweets.length > 0 then
+  end
 
-		 @tweets_of_interest << request_tweets
-	  end
+  def write_results_file(results)
 
-	  @tweets_of_interest
+    results_file = "#{@outbox}/#{@name}_results.csv"
+    File.open(results_file, 'w') {|file| file.write(results.gsub("\t", ','))}
 
-   end
+  end
 
-   #If one date specified, anchor the other to it w.r.t. max days.
-   #If neither, API will default to start date = now-28 days and end_date to now..
-   def set_dates(start_date = nil, end_date = nil)
+  def generate_tweets_of_interest_for_requests(endpoint = nil)
+    #@tweet_ids holds a 'tweet_ids' array of all 'inbox' tweets. Here we split them into MAX_TWEETS_PER_REQUEST "tweets of interest" parcels.
+    # ====> loads @tweets_of_interest[]
+    #@tweets_of_interest[0] = ['tweet_id_1', .., 'tweet_id_25']
+    #@tweets_of_interest[1] = ['tweet_id_26', .., 'tweet_id_50']
 
-	  if (start_date.nil? and not end_date.nil?)
+    endpoint = @endpoint if endpoint.nil?
 
-		 start_date = (@utils.get_date_object(end_date)) - (MAX_HISTORICAL_DAYS * (24 * 60 * 60))
+    request_tweets = [] #Array of up to MAX_TWEETS_PER_REQUEST.
 
-		 @start_date = start_date.to_s
-		 @end_date = end_date.to_s
+    if endpoint == 'historical'
+      tweets_per_request_limit = MAX_TWEETS_PER_REQUEST_HISTORICAL
+    elsif endpoint == '28hr'
+      tweets_per_request_limit = MAX_TWEETS_PER_REQUEST_28HR
+    elsif endpoint == 'totals'
+      tweets_per_request_limit = MAX_TWEETS_PER_REQUEST_TOTALS
+    else
+      AppLogger.log_warn "Specified endpoint not yet supported!"
+      return nil
+    end
 
-	  elsif (not start_date.nil? and end_date.nil?)
+    @tweet_ids.each do |tweet_id|
 
-		 end_date =(@utils.get_date_object(start_date)) + (MAX_HISTORICAL_DAYS * (24 * 60 * 60))
+      request_tweets << tweet_id
 
-		 if end_date > Time.new.utc
-			end_date = nil #Let API default to Now.
-		 end
+      if request_tweets.length == tweets_per_request_limit then
 
-		 @start_date = start_date.to_s
-		 @end_date = end_date.to_s if not end_date.nil?
+        @tweets_of_interest << request_tweets
 
-	  end
-   end
+        request_tweets = []
+      end
+    end
 
-   #This method: 
-   # + knows to exclude time-series Engagement Groupings from /totals requests.
-   # + knows that the /totals endpoint supports a subset of Engagement Types.
-   # +  
-   
-   def assemble_request(tweets_of_interest)
+    #Handle last batch, not already grabbed in USER_LIMIT chunks above.
+    if request_tweets.length > 0 then
 
-	  request = {}
+      @tweets_of_interest << request_tweets
+    end
 
-	  request['tweet_ids'] = tweets_of_interest
+    @tweets_of_interest
 
-	  if @endpoint == 'historical'
-		 request['start'] = @utils.get_ISO_date_string(@utils.get_date_object(@start_date)) unless @start_date.nil?
-		 request['end'] = @utils.get_ISO_date_string(@utils.get_date_object(@end_date)) unless @end_date.nil? #Let API default to now.
-	  end
+  end
 
-	  request['engagement_types'] = []
+  #If one date specified, anchor the other to it w.r.t. max days.
+  #If neither, API will default to start date = now-28 days and end_date to now..
+  def set_dates(start_date = nil, end_date = nil)
 
-	  if @endpoint == 'totals'
-		 @engagement_types.each do |engagement_type|
-			if TOTALS_ENGAGEMENT_TYPES.include?(engagement_type[0])
-			   if engagement_type[1] then
-				  request['engagement_types'] << engagement_type[0]
-			   end
-			end
-		 end
-	  else
-		 @engagement_types.each do |engagement_type|
-			if engagement_type[1] then
-			   request['engagement_types'] << engagement_type[0]
-			end
-		 end
-	  end
+    if (start_date.nil? and not end_date.nil?)
 
-	  #Assemble groupings section.
-  	  request['groupings'] = {}
-	  @groupings.each do |key, items|
-		 
-		 
-		 if @endpoint == 'totals'
+      start_date = (@utils.get_date_object(end_date)) - (MAX_HISTORICAL_DAYS * (24 * 60 * 60))
 
-		    if !items.include? 'engagement.hour' and !items.include? 'engagement.day'
-			   request['groupings'][key] = {}
-			   request['groupings'][key]['group_by'] = []
-			   items.each do |item|
-			   		request['groupings'][key]['group_by'] << item
-   			   end
-			else
-			   AppLogger.log_info "Not adding time-series grouping to /totals request"
-			   @groupings = @groupings.tap { |h| h.delete(key)}
-		    end
-		 else
-			request['groupings'][key] = {}
-			request['groupings'][key]['group_by'] = []
-			items.each do |item|
-			   request['groupings'][key]['group_by'] << item
-			end
-	     end
-	  end
+      @start_date = start_date.to_s
+      @end_date = end_date.to_s
 
-	  request.to_json
+    elsif (not start_date.nil? and end_date.nil?)
 
-   end
+      end_date = (@utils.get_date_object(start_date)) + (MAX_HISTORICAL_DAYS * (24 * 60 * 60))
 
-   def remove_unowned_tweets_from_request(request, error_msg)
+      if end_date > Time.new.utc
+        end_date = nil #Let API default to Now.
+      end
 
+      @start_date = start_date.to_s
+      @end_date = end_date.to_s if not end_date.nil?
 
-	  request = JSON.parse(request)
+    end
+  end
 
-	  tweet_ids = []
-	  tweet_ids = request['tweet_ids']
-	  tweet_ids_to_remove = []
-	  error_msg.split(':')[-1].split(',').each { |tweet_id|
-		 tweet_ids_to_remove << tweet_id
-	  }
+  #This method:
+  # + knows to exclude time-series Engagement Groupings from /totals requests.
+  # + knows that the /totals endpoint supports a subset of Engagement Types.
+  # +
 
-	  tweet_ids_to_remove.each { |tweet_id|
-		 AppLogger.log_error "Removing Tweet from request: #{tweet_id}"
-		 tweet_ids.delete(tweet_id.to_i)
-	  }
+  def assemble_request(tweets_of_interest)
 
-	  request['tweet_ids'] = tweet_ids
+    request = {}
 
-	  request.to_json
+    request['tweet_ids'] = tweets_of_interest
 
-   end
+    if @endpoint == 'historical'
+      request['start'] = @utils.get_ISO_date_string(@utils.get_date_object(@start_date)) unless @start_date.nil?
+      request['end'] = @utils.get_ISO_date_string(@utils.get_date_object(@end_date)) unless @end_date.nil? #Let API default to now.
+    end
 
-   def check_results(results)
-	  #Manages errors, including sleeps after rate limit errors.
+    request['engagement_types'] = []
 
-	  #Some example API errors:
-	  #{"errors"=>["Forbidden to access metrics: retweets"]}
-	  #{"errors"=>["internal server error"]}
-	  #{"errors"=>["Forbidden to access tweets for author id 1114564404: 640022366307745792", "Forbidden to access tweets for author id 18435372: 640026211712786432, 640026277605339136, 640027450420756481", "Forbidden to access tweets for author id 185728888: 640020476375474176, 640020688380821504, 640020920619409408, 640021584342851584, 640021586603569152, 640023513538121728, 640024358136741888, 640024360812707840, 640025909056143360, 640026591184179201, 640026594011148288, 640027929368469504, 640027931822157824, 640028121148821504, 640028123136966656", "Forbidden to access tweets for author id 2265341844: 640022312914407425", "Forbidden to access tweets for author id 22788127: 640023742215663616", "Forbidden to access tweets for author id 244260553: 640027565067931648", "Forbidden to access tweets for author id 2449312615: 640021983225184256", "Forbidden to access tweets for author id 398862690: 640025343227785216", "Forbidden to access tweets for author id 74641010: 640021572414124032"]}.
+    if @endpoint == 'totals'
+      @engagement_types.each do |engagement_type|
+        if TOTALS_ENGAGEMENT_TYPES.include?(engagement_type[0])
+          if engagement_type[1] then
+            request['engagement_types'] << engagement_type[0]
+          end
+        end
+      end
+    else
+      @engagement_types.each do |engagement_type|
+        if engagement_type[1] then
+          request['engagement_types'] << engagement_type[0]
+        end
+      end
+    end
 
-	  #"Forbidden to access tweets for author id 185728888: 640028123136966656"
+    #Assemble groupings section.
+    request['groupings'] = {}
+    @groupings.each do |key, items|
 
-	  results['continue'] = true
 
-	  if results['response']['errors'].nil?
+      if @endpoint == 'totals'
 
-		 if !results['response']['unavailable_tweet_ids'].nil?
-			AppLogger.log_info("Unavailable Tweet IDs: #{results['response']['unavailable_tweet_ids']}")
-		 end
+        if !items.include? 'engagement.hour' and !items.include? 'engagement.day'
+          request['groupings'][key] = {}
+          request['groupings'][key]['group_by'] = []
+          items.each do |item|
+            request['groupings'][key]['group_by'] << item
+          end
+        else
+          AppLogger.log_info "Not adding time-series grouping to /totals request"
+          @groupings = @groupings.tap {|h| h.delete(key)}
+        end
+      else
+        request['groupings'][key] = {}
+        request['groupings'][key]['group_by'] = []
+        items.each do |item|
+          request['groupings'][key]['group_by'] << item
+        end
+      end
+    end
 
-		 return results
+    request.to_json
 
-	  else #We have an error message from API.
+  end
 
-		 results['continue'] = false
+  def remove_unowned_tweets_from_request(request, error_msg)
 
-		 AppLogger.log_error("Server responded with an Error: #{results}.")
 
-		 results['response']['errors'].each { |error_msg|
-			if error_msg.downcase.include?('rate limit')
-			   AppLogger.log_error "ERROR, hit rate limit: #{results['response']['errors'][0]}"
-			   AppLogger.log_info "Sleeping #{@rate_limit_seconds/@rate_limit_requests} seconds before next API request..."
-			   AppLogger.log_info "Client making API request: #{results['request'][0..80]}"
-			   results['retry'] = 'rate-limit'
-			   results['continue'] = true
-			elsif error_msg.downcase.include?("forbidden to access tweets for author id")
-			   results['request'] = remove_unowned_tweets_from_request(results['request'], error_msg)
-			   results['retry'] = 'forbidden-tweets'
-			   results['continue'] = true
-			elsif error_msg.downcase.include? ("Your account could not be authenticated") #Bad Consumer Key secret or Access Token secret.
-			   AppLogger.log_error "ERROR: Can't authenticate: Please confirm your OAuth keys and tokens."
-			elsif error_msg.downcase.include? ("your application id is not authorized.") #Authentication failed.
-			   AppLogger.log_error "ERROR: Can't authenticate: Bad Consumer Key secret or Access Token secret?"
-			else
-			   AppLogger.log_error "ERROR occurred: #{error_msg}."
-			end
+    request = JSON.parse(request)
 
+    tweet_ids = []
+    tweet_ids = request['tweet_ids']
+    tweet_ids_to_remove = []
+    error_msg.split(':')[-1].split(',').each {|tweet_id|
+      tweet_ids_to_remove << tweet_id
+    }
 
-		 }
+    tweet_ids_to_remove.each {|tweet_id|
+      AppLogger.log_error "Removing Tweet from request: #{tweet_id}"
+      tweet_ids.delete(tweet_id.to_i)
+    }
 
-		 return results
-	  end
-   end
+    request['tweet_ids'] = tweet_ids
 
-   def save_api_response(results)
+    request.to_json
 
-	  num = 0
+  end
 
-	  results_saved = false
+  def check_results(results)
+    #Manages errors, including sleeps after rate limit errors.
 
-	  filename_base = "#{@name}_metrics"
-	  filename = filename_base
+    #Some example API errors:
+    #{"errors"=>["Forbidden to access metrics: retweets"]}
+    #{"errors"=>["internal server error"]}
+    #{"errors"=>["Forbidden to access tweets for author id 1114564404: 640022366307745792", "Forbidden to access tweets for author id 18435372: 640026211712786432, 640026277605339136, 640027450420756481", "Forbidden to access tweets for author id 185728888: 640020476375474176, 640020688380821504, 640020920619409408, 640021584342851584, 640021586603569152, 640023513538121728, 640024358136741888, 640024360812707840, 640025909056143360, 640026591184179201, 640026594011148288, 640027929368469504, 640027931822157824, 640028121148821504, 640028123136966656", "Forbidden to access tweets for author id 2265341844: 640022312914407425", "Forbidden to access tweets for author id 22788127: 640023742215663616", "Forbidden to access tweets for author id 244260553: 640027565067931648", "Forbidden to access tweets for author id 2449312615: 640021983225184256", "Forbidden to access tweets for author id 398862690: 640025343227785216", "Forbidden to access tweets for author id 74641010: 640021572414124032"]}.
 
-	  until results_saved
-		 if not File.file?("#{@outbox}/metrics/#{filename}.json")
-			File.open("#{@outbox}/metrics/#{filename}.json", 'w') { |file| file.write(results.to_json) }
-			results_saved = true
-		 else
-			num += 1
-			filename = filename_base + "_" + num.to_s
-		 end
-	  end
+    #"Forbidden to access tweets for author id 185728888: 640028123136966656"
 
-   end
+    results['continue'] = true
 
-   #=====================================================================================================================
-   # Called once when client app is started.
-   # Returns true if process finished as expected.
-   # Returns false if not.
+    if results['response']['errors'].nil?
 
-   def manage_process(endpoint = nil)
+      if !results['response']['unavailable_tweet_ids'].nil?
+        AppLogger.log_info("Unavailable Tweet IDs: #{results['response']['unavailable_tweet_ids']}")
+      end
 
-	  endpoint = @endpoint if endpoint.nil?
+      return results
 
-	  @uri_path = "/insights/engagement/#{@endpoint}"
+    else #We have an error message from API.
 
-	  if @endpoint == 'historical'
+      results['continue'] = false
 
-		 @start_date = @utils.set_ISO_date_string(@start_date) if @start_date != nil
-		 @end_date = @utils.set_ISO_date_string(@end_date) if @end_date != nil
+      AppLogger.log_error("Server responded with an Error: #{results}.")
 
-		 if not (@start_date == nil and @end_date == nil) #Only set dates if one or both are specified. If both are nil, API handles defaults.
+      results['response']['errors'].each {|error_msg|
+        if error_msg.downcase.include?('rate limit')
+          AppLogger.log_error "ERROR, hit rate limit: #{results['response']['errors'][0]}"
+          AppLogger.log_info "Sleeping #{@rate_limit_seconds / @rate_limit_requests} seconds before next API request..."
+          AppLogger.log_info "Client making API request: #{results['request'][0..80]}"
+          results['retry'] = 'rate-limit'
+          results['continue'] = true
+        elsif error_msg.downcase.include?("forbidden to access tweets for author id")
+          results['request'] = remove_unowned_tweets_from_request(results['request'], error_msg)
+          results['retry'] = 'forbidden-tweets'
+          results['continue'] = true
+        elsif error_msg.downcase.include? ("Your account could not be authenticated") #Bad Consumer Key secret or Access Token secret.
+          AppLogger.log_error "ERROR: Can't authenticate: Please confirm your OAuth keys and tokens."
+        elsif error_msg.downcase.include? ("your application id is not authorized.") #Authentication failed.
+          AppLogger.log_error "ERROR: Can't authenticate: Bad Consumer Key secret or Access Token secret?"
+        else
+          AppLogger.log_error "ERROR occurred: #{error_msg}."
+        end
 
-			@start_date = @utils.crop_date(@start_date, 'hour', 'before') if @start_date != nil
-			@end_date = @utils.crop_date(@end_date, 'hour', 'after') if @end_date != nil
 
-			set_dates(@start_date, @end_date)
+      }
 
-		 end
-	  end
+      return results
+    end
+  end
 
-	  continue = true
+  def save_api_response(results)
 
-	  load_ids if @tweet_ids.length == 0
+    num = 0
 
-	  AppLogger.log_info "Generating sets of Tweet IDs for API requests to #{endpoint} endpoint..."
+    results_saved = false
 
-	  @tweets_of_interest = generate_tweets_of_interest_for_requests(endpoint)
+    filename_base = "#{@name}_metrics"
+    filename = filename_base
 
-	  AppLogger.log_info "Will make #{@tweets_of_interest.count} API requests..."
+    until results_saved
+      if not File.file?("#{@outbox}/metrics/#{filename}.json")
+        File.open("#{@outbox}/metrics/#{filename}.json", 'w') {|file| file.write(results.to_json)}
+        results_saved = true
+      else
+        num += 1
+        filename = filename_base + "_" + num.to_s
+      end
+    end
 
-	  results = {}
-	  results['continue'] = true
+  end
 
-	  rate_limit_pause = @rate_limit_seconds/@rate_limit_requests
-		
-	  start_process = Time.now
-	  
-	  @tweets_of_interest.each do |toi| #These tweets_of_interest items each map to a single request.
+  #=====================================================================================================================
+  # Called once when client app is started.
+  # Returns true if process finished as expected.
+  # Returns false if not.
 
-		 begin
+  def manage_process(endpoint = nil)
 
-			results['request'] = assemble_request(toi)
-			start_request = Time.now
-			@num_requests += 1
-			AppLogger.log_info "Making #{@num_requests} of #{@tweets_of_interest.count} requests..."
-			results['response'] = JSON.parse(make_post_request(@uri_path, results['request']))
-			duration = Time.now - start_request
-			results['retry'] = nil
+    endpoint = @endpoint if endpoint.nil?
 
-			#--------------------------------------
+    @uri_path = "/insights/engagement/#{@endpoint}"
 
-			results = check_results(results)
+    if @endpoint == 'historical'
 
-			#----------------------------------------
+      @start_date = @utils.set_ISO_date_string(@start_date) if @start_date != nil
+      @end_date = @utils.set_ISO_date_string(@end_date) if @end_date != nil
 
-			if results['continue'] # if success, sleep and continue.
+      if not (@start_date == nil and @end_date == nil) #Only set dates if one or both are specified. If both are nil, API handles defaults.
 
-			   if results['retry'].nil?
-				  AppLogger.log_info "Managing Top Tweets, handling metadata in API response."
+        @start_date = @utils.crop_date(@start_date, 'hour', 'before') if @start_date != nil
+        @end_date = @utils.crop_date(@end_date, 'hour', 'after') if @end_date != nil
 
-				  if @save_api_responses
-					 save_api_response(results['response'])
-				  end
+        set_dates(@start_date, @end_date)
 
-				  manage_top_tweets(results['response']) unless (@max_top_tweets == 0 or !results['errors'].nil?)
+      end
+    end
 
-				  if @tweets_of_interest.count > 1
-			    	 AppLogger.log_info "Sleeping #{format('%.02f', rate_limit_pause - duration)} seconds before next API request... " if duration < rate_limit_pause
-					 sleep (rate_limit_pause - duration) if duration < rate_limit_pause
-				  end
-			   else #some error that has a try-again reaction...
-				  #Like hitting a rate limit
-				  if results['retry'] == 'rate-limit'
-					 AppLogger.log_warn "Rate-limit hit, sleeping #{rate_limit_pause} seconds before next API request..."
-					 sleep (rate_limit_pause)
-					 results['response'] = JSON.parse(make_post_request(@uri_path, results['request']))
-				  elsif results['retry'] == 'forbidden-tweets'
-					 AppLogger.log_warn "Retrying after forbidden Tweets removed from request... Sleeping #{rate_limit_pause} seconds before next API request..."
-					 sleep (rate_limit_pause)
-					 results['response'] = JSON.parse(make_post_request(@uri_path, results['request']))
-				  else
-					 AppLogger.log_warn "Error not handled?"
+    continue = true
 
-				  end
-			   end
-			else
-			   AppLogger.log_info "An 'no retry' type error occurred. Quitting... "
-			   continue = false
-			   return continue
+    load_ids if @tweet_ids.length == 0
 
-			end
-			
-		 rescue
-			AppLogger.log_error "ERROR occurred, skipping request."
-		 end
-	  end
-	  
-	  @process_duration = Time.now - start_process
+    AppLogger.log_info "Generating sets of Tweet IDs for API requests to #{endpoint} endpoint..."
 
-	  AppLogger.log_info "Sorting Top Tweets..."
-	  sort_top_tweets(@top_tweets) unless (@max_top_tweets == 0 or @top_tweets.nil?)
-	  continue
+    @tweets_of_interest = generate_tweets_of_interest_for_requests(endpoint)
 
-   end
+    AppLogger.log_info "Will make #{@tweets_of_interest.count} API requests..."
 
-   def files_to_ingest?
-	  files_to_ingest = false
-	  #Do we have files to process?
-	  AppLogger.log_info "Checking inbox for files to process..."
-	  files = Dir.glob("#{@inbox}/*.{json}")
-	  files += Dir.glob("#{@inbox}/*.{gz}")
-	  files += Dir.glob("#{@inbox}/*.{csv}")
-	  files_to_ingest = true if files.length > 0
-	  files_to_ingest
-   end
+    results = {}
+    results['continue'] = true
 
-   def load_ids
+    rate_limit_pause = @rate_limit_seconds / @rate_limit_requests
 
-	  metadata = {}
-	  id_type = 'tweet_ids'
+    start_process = Time.now
 
-	  files = Dir.glob("#{@inbox}/*.{json,gz}")
-	  if files.length > 0
-		 AppLogger.log_info "Found JSON or GZ files to process... Parsing out #{id_type}..."
-		 id_types = []
-		 id_types << id_type
-		 metadata = @utils.load_metadata_from_json(@inbox, id_types, @verbose)
-		 metadata["#{id_type}"]
-	  end
+    @tweets_of_interest.each do |toi| #These tweets_of_interest items each map to a single request.
 
-	  files = Dir.glob("#{@inbox}/*.{csv}")
-	  if files.length > 0
-		 AppLogger.log_info "Found CSVs... Parsing out #{id_type}..."
-		 metadata = @utils.load_metadata_from_csv(@inbox, id_type, @verbose)
-	  end
+      begin
 
-	  #if @save_ids then
-	  #	 puts 'Saving Parsed IDs has not been implemented.'
-	  #end
+        results['request'] = assemble_request(toi)
+        start_request = Time.now
+        @num_requests += 1
+        AppLogger.log_info "Making #{@num_requests} of #{@tweets_of_interest.count} requests..."
+        results['response'] = JSON.parse(make_post_request(@uri_path, results['request']))
+        duration = Time.now - start_request
+        results['retry'] = nil
 
-	  metadata[id_type]
-   end
+        #--------------------------------------
+
+        results = check_results(results)
+
+        #----------------------------------------
+
+        if results['continue'] # if success, sleep and continue.
+
+          if results['retry'].nil?
+            AppLogger.log_info "Managing Top Tweets, handling metadata in API response."
+
+            if @save_api_responses
+              save_api_response(results['response'])
+            end
+
+            manage_top_tweets(results['response']) unless (@max_top_tweets == 0 or !results['errors'].nil?)
+
+            if @tweets_of_interest.count > 1
+              AppLogger.log_info "Sleeping #{format('%.02f', rate_limit_pause - duration)} seconds before next API request... " if duration < rate_limit_pause
+              sleep (rate_limit_pause - duration) if duration < rate_limit_pause
+            end
+          else #some error that has a try-again reaction...
+            #Like hitting a rate limit
+            if results['retry'] == 'rate-limit'
+              AppLogger.log_warn "Rate-limit hit, sleeping #{rate_limit_pause} seconds before next API request..."
+              sleep (rate_limit_pause)
+              results['response'] = JSON.parse(make_post_request(@uri_path, results['request']))
+            elsif results['retry'] == 'forbidden-tweets'
+              AppLogger.log_warn "Retrying after forbidden Tweets removed from request... Sleeping #{rate_limit_pause} seconds before next API request..."
+              sleep (rate_limit_pause)
+              results['response'] = JSON.parse(make_post_request(@uri_path, results['request']))
+            else
+              AppLogger.log_warn "Error not handled?"
+
+            end
+          end
+        else
+          AppLogger.log_info "An 'no retry' type error occurred. Quitting... "
+          continue = false
+          return continue
+
+        end
+
+      rescue
+        AppLogger.log_error "ERROR occurred, skipping request."
+      end
+    end
+
+    @process_duration = Time.now - start_process
+
+    AppLogger.log_info "Sorting Top Tweets..."
+    sort_top_tweets(@top_tweets) unless (@max_top_tweets == 0 or @top_tweets.nil?)
+    continue
+
+  end
+
+  def files_to_ingest?
+    files_to_ingest = false
+    #Do we have files to process?
+    AppLogger.log_info "Checking inbox for files to process..."
+    files = Dir.glob("#{@inbox}/*.{json}")
+    files += Dir.glob("#{@inbox}/*.{gz}")
+    files += Dir.glob("#{@inbox}/*.{csv}")
+    files_to_ingest = true if files.length > 0
+    files_to_ingest
+  end
+
+  def load_ids
+
+    metadata = {}
+    id_type = 'tweet_ids'
+
+    files = Dir.glob("#{@inbox}/*.{json,gz}")
+    if files.length > 0
+      AppLogger.log_info "Found JSON or GZ files to process... Parsing out #{id_type}..."
+      id_types = []
+      id_types << id_type
+      metadata = @utils.load_metadata_from_json(@inbox, id_types, @verbose)
+      metadata["#{id_type}"]
+    end
+
+    files = Dir.glob("#{@inbox}/*.{csv}")
+    if files.length > 0
+      AppLogger.log_info "Found CSVs... Parsing out #{id_type}..."
+      metadata = @utils.load_metadata_from_csv(@inbox, id_type, @verbose)
+    end
+
+    #if @save_ids then
+    #	 puts 'Saving Parsed IDs has not been implemented.'
+    #end
+
+    metadata[id_type]
+  end
 
 end
 
